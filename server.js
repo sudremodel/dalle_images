@@ -57,7 +57,9 @@ const openai = new OpenAI({
 
 app.post('/dalle/search', checkApiKey, async (req, res, next) => {
   try {
+    console.log("111");
     const { query } = req.body;
+    console.log("111");
     const image = await openai.images.generate({
       model: "dall-e-3",
       prompt: query,
