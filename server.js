@@ -10,6 +10,15 @@ const app = express();
 const port = 3020;
 
 app.use(bodyParser.json());
+app.use((req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 const logger = winston.createLogger({
   level: 'info',
@@ -57,9 +66,7 @@ const openai = new OpenAI({
 
 app.post('/dalle/search', checkApiKey, async (req, res, next) => {
   try {
-    console.log("111");
     const { query } = req.body;
-    console.log("111");
     const image = await openai.images.generate({
       model: "dall-e-3",
       prompt: query,
