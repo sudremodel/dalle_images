@@ -37,34 +37,13 @@ app.use((err, req, res, next) => {
 
 const dalleApiKey = process.env.DALLE_API_KEY;
 const shutterstockApiKey = process.env.SHUTTERSTOCK_API_KEY;
-// Middleware to check for API key in request headers
-const checkApiKey = (req, res, next) => {
-  const apiKeyHeader = req.headers.authorization;
-
-  if (!apiKeyHeader) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const [bearer, apiKey] = apiKeyHeader.split(' ');
-
-  // Check the API key based on the endpoint
-  if (req.path === '/dalle/search' && apiKeyHeader !== dalleApiKey) {
-    return res.status(401).json({ error: 'Unauthorized for DALL-E endpoint' });
-  }
-   if (req.path === '/shutterstock/search' && apiKey !== shutterstockApiKey) {
-    return res.status(401).json({ error: 'Unauthorized for Shutterstock endpoint' });
-  }
-
-  // API key is valid, continue to the next middleware or route handler
-  next();
-};
 
 const openai = new OpenAI({
     apiKey: dalleApiKey,
     dangerouslyAllowBrowser: true,
 });
 
-app.post('/dalle/search', checkApiKey, async (req, res, next) => {
+app.post('/dalle/search', async (req, res, next) => {
   try {
     const { query } = req.body;
     const image = await openai.images.generate({
@@ -79,7 +58,7 @@ app.post('/dalle/search', checkApiKey, async (req, res, next) => {
     next(error);
   }
 });
-app.post('/shutterstock/search',checkApiKey, async (req, res, next) => {
+app.post('/shutterstock/search', async (req, res, next) => {
     try {
       const { query } = req.body;
       const response = await axios.get('https://api.shutterstock.com/v2/images/search', {
