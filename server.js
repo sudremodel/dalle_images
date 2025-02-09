@@ -5,6 +5,8 @@ const axios = require('axios');
 const mysql = require('mysql2');
 require('dotenv').config();
 const winston = require('winston');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient()
 
 const app = express();
 const port = 3020;
@@ -29,6 +31,60 @@ const logger = winston.createLogger({
     new winston.transports.File({ filename: 'combined.log' }), // Log all levels to a combined file
   ],
 });
+
+async function checkCredits(req,res,next){
+  try {
+    const entityId = req.query.entityId;
+    const organizationId = req.query.organizationId;
+
+    console.log("organizationId = ", organizationId);
+
+    const creditsUrl = `${req.protocol}://${req.get("host")}/api/v1/credits/${organizationId}`;
+    const subscriptionUrl = `${req.protocol}://${req.get("host")}/api/v1/subscription/entity/${entityId}`;
+
+    let creditsinfo, subscriptionInfo;
+
+    // Fetch Credits
+    try {
+      const creditResponse = await axios.get(creditsUrl);
+      creditsinfo = creditResponse.data.credits;
+    } catch (error) {
+      return res.status(500).json({ message: "Error fetching credits", error: error.message });
+    }
+
+    // Fetch Subscription
+    try {
+      const subscriptionResponse = await axios.get(subscriptionUrl);
+      subscriptionInfo = subscriptionResponse.data.subscription;
+    } catch (error) {
+      return res.status(500).json({ message: "Error fetching subscription", error: error.message });
+    }
+
+    // If no entity found
+    if (!creditsinfo.length || !subscriptionInfo.length) {
+      return res.status(404).json({ message: "No entity" });
+    }
+
+    // Check if subscription is active
+    if (!subscriptionInfo[0].is_active) {
+      return res.status(403).json({ message: "Status not active" });
+    }
+
+    // Check credit availability
+    const requiredCredits = Number(process.env.REQUIRED_CREDITS);
+    if ((creditsinfo[0].planCredits - creditsinfo[0].creditsUsed) < requiredCredits) {
+      return res.status(403).json({ message: "Insufficient Credits" });
+    }
+
+    // Attach credits to request and move to next middleware
+    req.credits = creditsinfo[0];
+    next();
+  } catch (error) {
+    console.error("Error in checkCredits:", error);
+    res.status(500).json({ message: "Internal Server Error", error: error.message });
+  }
+}
+
 app.use((err, req, res, next) => {
   logger.error(`Error caught by error handling middleware: ${err.message}`, { error: err });
   const errorMessage = 'Internal Server Error';
@@ -43,7 +99,36 @@ const openai = new OpenAI({
     dangerouslyAllowBrowser: true,
 });
 
-app.post('/dalle/search', async (req, res, next) => {
+app.put("/api/v1/credits/update",async(req,res)=>{
+  try {
+    const body = req.body;
+    const creditsinfo= await prisma.credits.findMany({
+      where : {organizationId:body.organizationId}
+    })
+    if(creditsinfo.length===0){
+      return res.status(500).json({message:"No credits found"})
+    }
+    console.log("Credits info from update: ");
+    
+    // creditsUsed=body.creditsUsed+creditsinfo[0].creditsUsed
+    const creditsUsed = Number((body.creditsUsed || 0)) + Number(creditsinfo[0].creditsUsed);
+
+    const newCredits = {
+      ...creditsinfo[0],
+      creditsUsed
+    };
+
+    const response = await prisma.credits.update({
+      where : {creditsId:body.creditsId},data:newCredits
+    })
+    return res.status(200).json({message:"successfull"})
+  } catch (error) {
+    console.error("Error fetching entity credits:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+  })
+
+app.post('/dalle/search', checkCredits, async (req, res, next) => {
   try {
     const { query } = req.body;
     const image = await openai.images.generate({
@@ -51,6 +136,11 @@ app.post('/dalle/search', async (req, res, next) => {
       prompt: query,
     });
     const imageUrl = image.data[0]?.url;
+    const creditsInfo=req.credits;
+    console.log("Credits Info from dalle: ",creditsInfo);
+    creditsInfo.creditsUsed=process.env.REQUIRED_CREDITS;
+    const url = `${req.protocol}://${req.get("host")}/api/v1/credits/update`
+    const response = await axios.put(url,creditsInfo)
     res.json({ imageUrl });
     logger.info('DALL-E image search successful', { query, imageUrl });
   } catch (error) {
@@ -58,7 +148,7 @@ app.post('/dalle/search', async (req, res, next) => {
     next(error);
   }
 });
-app.post('/shutterstock/search', async (req, res, next) => {
+app.post('/shutterstock/search', checkCredits, async (req, res, next) => {
     try {
       const { query } = req.body;
       const response = await axios.get('https://api.shutterstock.com/v2/images/search', {
@@ -73,6 +163,10 @@ app.post('/shutterstock/search', async (req, res, next) => {
       });
   
       const imageUrls = response.data.data.map(img => img.assets.preview.url);
+      const creditsInfo=req.credits;
+      creditsInfo.creditsUsed=process.env.REQUIRED_CREDITS;
+      const url = `${req.protocol}://${req.get("host")}/api/v1/credits/update`
+      const response1 = await axios.put(url,creditsInfo)
       res.json({ imageUrls });
       logger.info('Shutterstock image search successful', { query, imageUrls });
     } catch (error) {
@@ -94,6 +188,39 @@ app.post('/shutterstock/search', async (req, res, next) => {
       console.log('Connected to database');
     }
   });
+  app.get("/api/v1/credits/:organization", async (req, res) => {
+    const organizationId = req.params.organization;
+
+    try {
+        const creditsInfo = await prisma.credits.findMany({
+            where: { organizationId }
+        });
+        console.log("creditsInfo = ", creditsInfo);
+        const formattedCreditsInfo = creditsInfo.map(credit => ({
+          ...credit,
+          planCredits: Number(credit.planCredits),
+          creditsUsed: Number(credit.creditsUsed)
+      }));
+
+        res.status(200).json({credits:formattedCreditsInfo})
+    } catch (error) {
+        console.error("Error fetching entity credits:", error);
+        res.status(500).json({ message: "Internal server error" });
+    }
+});
+app.get("/api/v1/subscription/entity/:entityId",async(req,res)=>{
+  try{
+  const entity_id = req.params.entityId;
+  const subscription = await prisma.subscription.findMany({
+  where:{entity_id}
+  })
+  return res.status(200).json({subscription:subscription})
+  }catch(error){
+  console.error(error)
+  res.status(500).json({ message: "Internal server error" });
+  }
+  
+  })
   app.post('/storeDownload', async (req, res) => {
     try {
       const { organization_id, entity_id, logoUrl, Headlines, Subheadlines, CallToAction, imageUrl } = req.body;
