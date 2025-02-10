@@ -9,14 +9,14 @@ datasource db {
 
 model ads {
   id              Int       @id @default(autoincrement())
-  organization_id Int
-  entity_id       Int
+  organization_id String    @db.VarChar(36)
+  entity_id       String    @db.VarChar(36)
   logo_url        String?   @db.VarChar(255)
   Headlines       String?   @db.VarChar(255)
   Subheadlines    String?   @db.VarChar(255)
   CallToAction    String?   @db.VarChar(255)
-  image_url       String    @db.VarChar(255)
-  created_at_time DateTime? @db.Timestamp(0)
+  image_url       String?   @db.Text
+  created_at_time DateTime? @default(now()) @db.Timestamp(0)
 }
 
 model subscription {

@@ -49,7 +49,7 @@ async function checkCredits(req,res,next){
       const creditResponse = await axios.get(creditsUrl);
       creditsinfo = creditResponse.data.credits;
     } catch (error) {
-      return res.status(500).json({ message: "Error fetching credits", error: error.message });
+      return res.status(error.response?.status).json({ message: error.response?.data.message, })
     }
 
     // Fetch Subscription
@@ -57,27 +57,27 @@ async function checkCredits(req,res,next){
       const subscriptionResponse = await axios.get(subscriptionUrl);
       subscriptionInfo = subscriptionResponse.data.subscription;
     } catch (error) {
-      return res.status(500).json({ message: "Error fetching subscription", error: error.message });
+      return res.status(error.response?.status).json({ message: error.response?.data.message, });
     }
 
     // If no entity found
-    if (!creditsinfo.length || !subscriptionInfo.length) {
-      return res.status(404).json({ message: "No entity" });
-    }
+    // if (!creditsinfo.length || !subscriptionInfo.length) {
+    //   return res.status(404).json({ message: "No entity" });
+    // }
 
     // Check if subscription is active
-    if (!subscriptionInfo[0].is_active) {
+    if (!subscriptionInfo.is_active) {
       return res.status(403).json({ message: "Status not active" });
     }
 
     // Check credit availability
     const requiredCredits = Number(process.env.REQUIRED_CREDITS);
-    if ((creditsinfo[0].planCredits - creditsinfo[0].creditsUsed) < requiredCredits) {
+    if ((creditsinfo.planCredits - creditsinfo.creditsUsed) < requiredCredits) {
       return res.status(403).json({ message: "Insufficient Credits" });
     }
 
     // Attach credits to request and move to next middleware
-    req.credits = creditsinfo[0];
+    req.credits = creditsinfo;
     next();
   } catch (error) {
     console.error("Error in checkCredits:", error);
@@ -195,14 +195,17 @@ app.post('/shutterstock/search', checkCredits, async (req, res, next) => {
         const creditsInfo = await prisma.credits.findMany({
             where: { organizationId }
         });
-        console.log("creditsInfo = ", creditsInfo);
+       if(creditsInfo.length==0){
+        return res.status(400).json({message: "No credits found"})
+       }
         const formattedCreditsInfo = creditsInfo.map(credit => ({
           ...credit,
           planCredits: Number(credit.planCredits),
           creditsUsed: Number(credit.creditsUsed)
       }));
-
-        res.status(200).json({credits:formattedCreditsInfo})
+      console.log("Credits: ",formattedCreditsInfo[0]);
+      
+        res.status(200).json({credits:formattedCreditsInfo[0]})
     } catch (error) {
         console.error("Error fetching entity credits:", error);
         res.status(500).json({ message: "Internal server error" });
@@ -214,7 +217,11 @@ app.get("/api/v1/subscription/entity/:entityId",async(req,res)=>{
   const subscription = await prisma.subscription.findMany({
   where:{entity_id}
   })
-  return res.status(200).json({subscription:subscription})
+  if(subscription.length==0){
+    return res.status(400).json({message: "No subscription found"})
+  }
+  console.log("Subscription: ",subscription)
+  return res.status(200).json({subscription:subscription[0]})
   }catch(error){
   console.error(error)
   res.status(500).json({ message: "Internal server error" });
@@ -224,45 +231,57 @@ app.get("/api/v1/subscription/entity/:entityId",async(req,res)=>{
   app.post('/storeDownload', async (req, res) => {
     try {
       const { organization_id, entity_id, logoUrl, Headlines, Subheadlines, CallToAction, imageUrl } = req.body;
+      console.log("Request Body: ",req.body);
       const createdAtTime = new Date();
       if (!organization_id || !entity_id || !imageUrl) {
         return res.status(500).json({ error: 'organization_id, entity_id, and image_url are required fields' });
       }
-      console.log("you are in remodel database");
-      const createTableQuery = `
-        CREATE TABLE IF NOT EXISTS ads (
-          id INT AUTO_INCREMENT PRIMARY KEY,
-          organization_id INT NOT NULL,
-          entity_id INT NOT NULL,
-          logo_url VARCHAR(255),
-          Headlines VARCHAR(255),
-          Subheadlines VARCHAR(255),
-          CallToAction VARCHAR(255),
-          image_url VARCHAR(255) NOT NULL,
-          created_at_time TIMESTAMP
-        )
-      `;
+      // console.log("you are in remodel database");
+      // const createTableQuery = `
+      //   CREATE TABLE IF NOT EXISTS ads (
+      //     id INT AUTO_INCREMENT PRIMARY KEY,
+      //     organization_id INT NOT NULL,
+      //     entity_id INT NOT NULL,
+      //     logo_url VARCHAR(255),
+      //     Headlines VARCHAR(255),
+      //     Subheadlines VARCHAR(255),
+      //     CallToAction VARCHAR(255),
+      //     image_url VARCHAR(255) NOT NULL,
+      //     created_at_time TIMESTAMP
+      //   )
+      // `;
       
-      dbConnection.query(createTableQuery, (error) => {
-        if (error) {
-          console.error('Error creating table:', error);
-          res.status(500).json({ error: 'Internal Server Error' });
-          return;
-        }
+      // dbConnection.query(createTableQuery, (error) => {
+      //   if (error) {
+      //     console.error('Error creating table:', error);
+      //     res.status(500).json({ error: 'Internal Server Error' });
+      //     return;
+      //   }
+        
   
-        const insertQuery = 'INSERT INTO ads (organization_id, entity_id, logo_url, Headlines, Subheadlines, CallToAction, image_url, created_at_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-        const values = [organization_id, entity_id, logoUrl, Headlines, Subheadlines, CallToAction, imageUrl, createdAtTime];
+      //   const insertQuery = 'INSERT INTO ads (organization_id, entity_id, logo_url, Headlines, Subheadlines, CallToAction, image_url, created_at_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
+      //   const values = [organization_id, entity_id, logoUrl, Headlines, Subheadlines, CallToAction, imageUrl, createdAtTime];
   
-        dbConnection.query(insertQuery, values, (error, results) => {
-          if (error) {
-            console.error('Error storing data in the database:', error);
-            res.status(500).json({ error: 'Internal Server Error' });
-          } else {
-            console.log('Data stored successfully');
-            res.json({ success: true });
-          }
-        });
-      });
+      //   dbConnection.query(insertQuery, values, (error, results) => {
+      //     if (error) {
+      //       console.error('Error storing data in the database:', error);
+      //       res.status(500).json({ error: 'Internal Server Error' });
+      //     } else {
+      //       console.log('Data stored successfully');
+      //       res.json({ success: true });
+      //     }
+      //   });
+      // });
+      const data={
+        organization_id,
+        entity_id,
+        logo_url:logoUrl,
+        Headlines, Subheadlines, CallToAction, image_url:imageUrl,  created_at_time:createdAtTime
+      }
+      const savedImage = await prisma.ads.create({
+        data
+      })
+      return res.status(201).json({success:true});
     } catch (error) {
       console.error('Error handling storeData request:', error);
       res.status(500).json({ error: 'Internal Server Error' });
@@ -277,23 +296,31 @@ app.get("/api/v1/subscription/entity/:entityId",async(req,res)=>{
         return res.status(400).json({ error: 'entity_id parameter is required' });
       }
   
-      const query = 'SELECT logo_url, Headlines, Subheadlines, CallToAction, image_url FROM ads WHERE entity_id = ?';
-      const values = [entity_id];
-  
-      dbConnection.query(query, values, (error, results) => {
-        if (error) {
-          console.error('Error retrieving data from userLibrary:', error);
-          res.status(500).json({ error: 'Internal Server Error' });
-        } else {
-          if (results.length === 0) {
-            // No data found for the specified entity_id
-            res.status(404).json({ error: 'Entity not found' });
-          } else {
-            console.log('Data retrieved successfully');
-            res.json({ images: results });
-          }
-        }
-      });
+      // const query = 'SELECT logo_url, Headlines, Subheadlines, CallToAction, image_url FROM ads WHERE entity_id = ?';
+      // const values = [entity_id];
+      
+      // dbConnection.query(query, values, (error, results) => {
+      //   if (error) {
+      //     console.error('Error retrieving data from userLibrary:', error);
+      //     res.status(500).json({ error: 'Internal Server Error' });
+      //   } else {
+      //     if (results.length === 0) {
+      //       // No data found for the specified entity_id
+      //       res.status(404).json({ error: 'Entity not found' });
+      //     } else {
+      //       console.log('Data retrieved successfully');
+      //       console.log("Images: ",results);
+            
+      //       res.json({ images: results });
+      //     }
+      //   }
+      // });
+      const images= await prisma.ads.findMany({
+        where:{entity_id}
+      })
+      console.log("Images: ",images);
+      res.status(200).json({ images: images });
+
     } catch (error) {
       console.error('Error handling getDownloadedImages request:', error);
       res.status(500).json({ error: 'Internal Server Error' });
