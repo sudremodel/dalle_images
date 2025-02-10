@@ -3,7 +3,9 @@ const bodyParser = require('body-parser');
 const OpenAI = require("openai");
 const axios = require('axios');
 const mysql = require('mysql2');
-require('dotenv').config();
+const dotenv = require("dotenv");
+const envFile = `.env.${process.env.NODE_ENV || "development"}`;
+dotenv.config({path:envFile});
 const winston = require('winston');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient()
@@ -37,22 +39,19 @@ async function checkCredits(req,res,next){
     const entityId = req.query.entityId;
     const organizationId = req.query.organizationId;
 
-    console.log("organizationId = ", organizationId);
 
-    const creditsUrl = `${req.protocol}://${req.get("host")}/api/v1/credits/${organizationId}`;
-    const subscriptionUrl = `${req.protocol}://${req.get("host")}/api/v1/subscription/entity/${entityId}`;
+    const creditsUrl = `${process.env.BACKEND_URL}/api/v1/credits/${organizationId}`;
+    const subscriptionUrl = `${process.env.BACKEND_URL}/api/v1/subscription/entity/${entityId}`;
 
     let creditsinfo, subscriptionInfo;
 
-    // Fetch Credits
+
     try {
       const creditResponse = await axios.get(creditsUrl);
       creditsinfo = creditResponse.data.credits;
     } catch (error) {
       return res.status(error.response?.status).json({ message: error.response?.data.message, })
     }
-
-    // Fetch Subscription
     try {
       const subscriptionResponse = await axios.get(subscriptionUrl);
       subscriptionInfo = subscriptionResponse.data.subscription;
@@ -60,23 +59,16 @@ async function checkCredits(req,res,next){
       return res.status(error.response?.status).json({ message: error.response?.data.message, });
     }
 
-    // If no entity found
-    // if (!creditsinfo.length || !subscriptionInfo.length) {
-    //   return res.status(404).json({ message: "No entity" });
-    // }
-
-    // Check if subscription is active
+  
     if (!subscriptionInfo.is_active) {
       return res.status(403).json({ message: "Status not active" });
     }
-
-    // Check credit availability
     const requiredCredits = Number(process.env.REQUIRED_CREDITS);
     if ((creditsinfo.planCredits - creditsinfo.creditsUsed) < requiredCredits) {
       return res.status(403).json({ message: "Insufficient Credits" });
     }
 
-    // Attach credits to request and move to next middleware
+
     req.credits = creditsinfo;
     next();
   } catch (error) {
