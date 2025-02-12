@@ -166,20 +166,20 @@ app.post('/shutterstock/search', checkCredits, async (req, res, next) => {
       next(error);
     }
   });
-  const dbConfig = {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_DATABASE,
-  };
-  const dbConnection = mysql.createConnection(dbConfig);
-  dbConnection.connect((err) => {
-    if (err) {
-      console.error('Error connecting to database:', err);
-    } else {
-      console.log('Connected to database');
-    }
-  });
+  // const dbConfig = {
+  //   host: process.env.DB_HOST,
+  //   user: process.env.DB_USER,
+  //   password: process.env.DB_PASSWORD,
+  //   database: process.env.DB_DATABASE,
+  // };
+  // const dbConnection = mysql.createConnection(dbConfig);
+  // dbConnection.connect((err) => {
+  //   if (err) {
+  //     console.error('Error connecting to database:', err);
+  //   } else {
+  //     console.log('Connected to database');
+  //   }
+  // });
   app.get("/api/v1/credits/:organization", async (req, res) => {
     const organizationId = req.params.organization;
 
